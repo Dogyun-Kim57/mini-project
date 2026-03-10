@@ -6,7 +6,7 @@
 
 
 def validate_signup(data):
-    required_fields = ["uid", "email", "password", "name"]
+    required_fields = ["email", "password", "name"]
 
     for field in required_fields:
         if not data.get(field):
@@ -19,7 +19,7 @@ def validate_signup(data):
 
 
 def validate_login(data):
-    required_fields = ["login_id", "password"]
+    required_fields = ["email", "password"]
 
     for field in required_fields:
         if not data.get(field):

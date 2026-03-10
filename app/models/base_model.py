@@ -11,9 +11,6 @@ from app.extensions import db
 
 
 class BaseModel(db.Model):
-    """
-    모든 테이블에서 공통으로 사용할 생성일 / 수정일 컬럼
-    """
     __abstract__ = True
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

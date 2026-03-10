@@ -1,5 +1,7 @@
-def validate_member_update(data):
-    allowed_fields = ["email", "name", "status", "role", "admin_code"]
+# 회원 수정 API용 입력값 검사 기능
+
+def validate_user_update(data):
+    allowed_fields = ["email", "name", "role", "is_active"]
 
     for key in data.keys():
         if key not in allowed_fields:

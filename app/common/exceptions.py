@@ -8,16 +8,13 @@ class AppException(Exception):
         super().__init__(message)
 
 
-# 아직은 pass 처리
-
-# 입력 값 문제
 class ValidationException(AppException):
     pass
 
-# 로그인 문제
+
 class AuthException(AppException):
     pass
 
-# 데이터 없음
+
 class NotFoundException(AppException):
     pass

@@ -25,6 +25,7 @@
 # 9. response.py 로 성공 응답 반환
 
 from flask import Blueprint, request
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.common.response import success_response, error_response
 from app.common.exceptions import AppException
 from app.schemas.auth_schema import validate_signup, validate_login
@@ -59,5 +60,16 @@ def login():
     try:
         result = AuthService.login(data)
         return success_response("로그인에 성공했습니다.", result, 200)
+    except AppException as e:
+        return error_response(e.message, status_code=e.status_code)
+
+
+@auth_bp.route("/me", methods=["GET"])
+@jwt_required()
+def me():
+    try:
+        user_id = int(get_jwt_identity())
+        result = AuthService.get_me(user_id)
+        return success_response("내 정보 조회 성공", result)
     except AppException as e:
         return error_response(e.message, status_code=e.status_code)

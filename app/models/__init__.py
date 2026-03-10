@@ -1,2 +1,1 @@
-from app.models.member_model import Member
-from app.models.video_model import Video
+from app.models.user_model import User

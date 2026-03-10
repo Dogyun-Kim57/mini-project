@@ -21,8 +21,8 @@
 from datetime import datetime, timedelta
 from flask_jwt_extended import create_access_token
 from app.extensions import bcrypt
-from app.models.member_model import Member
-from app.repositories.member_repository import MemberRepository
+from app.models.user_model import User
+from app.repositories.user_repository import UserRepository
 from app.common.exceptions import ValidationException, AuthException
 
 
@@ -32,98 +32,86 @@ class AuthService:
 
     @staticmethod
     def signup(data):
-        # uid 중복 체크
-        if MemberRepository.get_by_uid(data["uid"]):
-            raise ValidationException("이미 사용 중인 uid입니다.", 409)
-
-        # email 중복 체크
-        if MemberRepository.get_by_email(data["email"]):
+        # 이메일 중복 검사
+        if UserRepository.get_by_email(data["email"]):
             raise ValidationException("이미 사용 중인 이메일입니다.", 409)
 
-        # 비밀번호 해시 처리
+        # 비밀번호 암호화
         password_hash = bcrypt.generate_password_hash(data["password"]).decode("utf-8")
 
-        # 관리자 코드가 맞으면 관리자 계정 생성
-        # 실제 운영에서는 하드코딩보다 .env 관리가 더 좋다
-        role = "user"
-        admin_code = data.get("admin_code")
-
-        if admin_code and admin_code == "MASTER_ADMIN_CODE":
-            role = "admin"
-
-        member = Member(
-            uid=data["uid"],
+        user = User(
             email=data["email"],
-            password=password_hash,
+            password_hash=password_hash,
             name=data["name"],
-            role=role,
-            status="active",
-            admin_code=admin_code
+            role="user",
+            is_active=True,
+            login_fail_count=0,
+            lock_until=None,
+            deleted_at=None
         )
 
-        saved_member = MemberRepository.create_member(member)
-        return saved_member.to_dict()
+        saved_user = UserRepository.create_user(user)
+        return saved_user.to_dict()
 
     @staticmethod
     def login(data):
-        login_id = data["login_id"]
+        email = data["email"]
         input_password = data["password"]
 
-        # uid 또는 email로 회원 찾기
-        member = MemberRepository.get_by_login_id(login_id)
+        user = UserRepository.get_by_email(email)
 
-        if not member:
-            raise AuthException("아이디(또는 이메일) 또는 비밀번호가 올바르지 않습니다.", 401)
+        # 회원 없음 또는 탈퇴 처리됨
+        if not user or user.deleted_at is not None:
+            raise AuthException("이메일 또는 비밀번호가 올바르지 않습니다.", 401)
 
-        # 계정 상태 확인
-        if member.status != "active":
+        # 비활성 계정
+        if not user.is_active:
             raise AuthException("비활성화된 계정입니다.", 403)
 
-        # 로그인 제한 중인지 확인
         now = datetime.utcnow()
-        if member.locked_until and member.locked_until > now:
-            remain_seconds = int((member.locked_until - now).total_seconds())
+
+        # 잠금 상태 확인
+        if user.lock_until and user.lock_until > now:
+            remain_seconds = int((user.lock_until - now).total_seconds())
             raise AuthException(
-                f"로그인 5회 이상 실패로 제한되었습니다. {remain_seconds}초 후 다시 시도해주세요.",
+                f"로그인 5회 이상 실패로 잠금 상태입니다. {remain_seconds}초 후 다시 시도해주세요.",
                 403
             )
 
-        # 비밀번호 확인
-        if not bcrypt.check_password_hash(member.password, input_password):
-            member.login_fail_count += 1
+        # 비밀번호 틀림
+        if not bcrypt.check_password_hash(user.password_hash, input_password):
+            user.login_fail_count += 1
 
-            # 실패 횟수 5회 이상이면 1분 제한
-            if member.login_fail_count >= AuthService.LOGIN_FAIL_LIMIT:
-                member.locked_until = now + timedelta(minutes=AuthService.LOCK_MINUTES)
-                member.login_fail_count = 0
+            if user.login_fail_count >= AuthService.LOGIN_FAIL_LIMIT:
+                user.lock_until = now + timedelta(minutes=AuthService.LOCK_MINUTES)
+                user.login_fail_count = 0
 
-            MemberRepository.save()
-            raise AuthException("아이디(또는 이메일) 또는 비밀번호가 올바르지 않습니다.", 401)
+            UserRepository.save()
+            raise AuthException("이메일 또는 비밀번호가 올바르지 않습니다.", 401)
 
-        # 로그인 성공 시 실패 횟수 초기화
-        member.login_fail_count = 0
-        member.locked_until = None
-        member.last_login = now
-        MemberRepository.save()
+        # 로그인 성공
+        user.login_fail_count = 0
+        user.lock_until = None
+        UserRepository.save()
 
-        # JWT 발급
         access_token = create_access_token(
-            identity=str(member.id),
+            identity=str(user.id),
             additional_claims={
-                "uid": member.uid,
-                "role": member.role
+                "email": user.email,
+                "role": user.role
             }
         )
 
         return {
             "access_token": access_token,
-            "member": member.to_dict()
+            "user": user.to_dict()
         }
 
     @staticmethod
-    def get_me(member_id):
-        member = MemberRepository.get_by_id(member_id)
-        if not member:
+    def get_me(user_id):
+        user = UserRepository.get_by_id(user_id)
+
+        if not user or user.deleted_at is not None:
             raise AuthException("사용자를 찾을 수 없습니다.", 404)
 
-        return member.to_dict()
+        return user.to_dict()
